@@ -1,0 +1,330 @@
+#include <iostream>
+#include <random>
+#include <vector>
+#include <math.h>
+#include <algorithm>
+using namespace std;
+
+#define DIM 10
+#define NUM 200
+#define MIN -10
+#define MAX 10
+#define METRIC 0 // L2 Metric
+
+random_device rd;
+mt19937 gen(rd());
+
+int partition(float arr[], int l, int r, int k); // does not matter, for median finding
+
+struct Point
+{
+    float vp[DIM];
+};
+
+struct Node
+{
+    Point vp;
+    float mu;
+    Node *left;
+    Node *right;
+};
+
+float *getRandomSample(int *array, int arraySize, int sample_size)
+{
+    uniform_int_distribution<> dist(0, arraySize - 1);
+    float *returnVal = new float[sample_size * DIM];
+    bool isAdded[NUM];
+    for (size_t i = 0; i < NUM; i++)
+    {
+        isAdded[i] = false;
+    }
+
+    for (size_t i = 0; i < sample_size; i++)
+    {
+        while (1)
+        {
+            int arrayNum = dist(gen);
+            if (isAdded[arrayNum] == false)
+            {
+                isAdded[arrayNum] = true;
+                for (size_t j = 0; j < DIM; j++)
+                {
+                    returnVal[i * DIM + j] = array[arrayNum * DIM + j];
+                }
+                break;
+            }
+        }
+    }
+    return returnVal;
+}
+
+float L2Dist(Point vec1, Point vec2) // Fixed
+{
+    float sum = 0;
+    for (size_t i = 0; i < DIM; i++)
+    {
+        sum = sum + (vec1.vp[i] - vec2.vp[i]) * (vec1.vp[i] - vec2.vp[i]);
+    }
+    return sqrt(sum);
+}
+
+float findMedian(float *arr, int n) // only used for smaller subcases so not O(nlog n)
+{
+    sort(arr, arr + n);
+    return arr[n / 2];
+}
+
+float kthSmallest(float *arr, int l, int r, int k) // O(n) median finding algorithm
+{
+
+    if (k > 0 && k <= r - l + 1)
+    {
+        int n = r - l + 1;
+
+        int i;
+        float median[(n + 4) / 5];
+        for (i = 0; i < n / 5; i++)
+        {
+            median[i] = findMedian(arr + l + i * 5, 5);
+        }
+
+        if (i * 5 < n)
+        {
+            median[i] = findMedian(arr + l + i * 5, n % 5);
+            i++;
+        }
+
+        int medOfMed = (i == 1) ? median[i - 1] : kthSmallest(median, 0, i - 1, i / 2);
+
+        int pos = partition(arr, l, r, medOfMed);
+
+        if (pos - l == k - 1)
+        {
+            return arr[pos];
+        }
+
+        if (pos - l > k - 1)
+        {
+            return kthSmallest(arr, l, pos - 1, k);
+        }
+
+        return kthSmallest(arr, pos + 1, r, k - pos + l - 1);
+    }
+    return 69;
+}
+
+void swap(float *a, float *b) // what it sounds like
+{
+    float temp = *a;
+    *a = *b;
+    *b = temp;
+}
+
+int partition(float *arr, int l, int r, int x)
+{
+    int i;
+    for (i = l; i < r; i++)
+        if (arr[i] == x)
+            break;
+    swap(&arr[i], &arr[r]);
+
+    i = l;
+    for (int j = l; j <= r - 1; j++)
+    {
+        if (arr[j] <= x)
+        {
+            swap(&arr[i], &arr[j]);
+            i++;
+        }
+    }
+    swap(&arr[i], &arr[r]);
+    return i;
+}
+
+int randomInt(int min, int max) // gives randomInt Inclusive
+{
+    uniform_int_distribution<> dist(min, max);
+    return dist(gen);
+}
+
+float randomFloat(float min, float max) // gives randomFloat in given bounds Inclusive but doesn't matter
+{
+    uniform_real_distribution<> dist(min, max);
+    return dist(gen);
+}
+
+Point randomPoint()
+{
+    Point *temp = new Point;
+    for (size_t i = 0; i < DIM; i++)
+    {
+        temp->vp[i] = randomFloat(MIN, MAX);
+    }
+    return *temp;
+}
+void print_pt(Point a);
+
+Node *buildVantagePointTree(Point *data, int arraySize)
+{
+    if (arraySize == 0)
+    {
+        return nullptr;
+    }
+    Node *root = new Node;
+    int vpIndex = randomInt(0, arraySize - 1);
+    root->vp = data[vpIndex];
+    //cout<<"\nNode:";
+    //print_pt(root->vp);   
+    float *distance = new float[arraySize];
+    for (size_t i = 0; i < arraySize; i++)
+    {
+        distance[i] = L2Dist(data[i], root->vp);
+    }
+    root->mu = findMedian(distance, arraySize);
+    //cout<<"mu:"<<root->mu<<endl;
+    vector<Point> left;
+    vector<Point> right;
+    for (size_t i = 0; i < arraySize; i++)
+    {
+        if (i != vpIndex)
+        {
+            if (distance[i] < root->mu)
+            {
+                left.push_back(data[i]);
+            }
+            else if (distance[i] >= root->mu)
+            {
+                right.push_back(data[i]);
+            }
+        }
+    }
+    /*cout<<"Left"<<endl;
+    for (int i=0;i<left.size();i++)
+    {
+    	print_pt(left[i]);
+	}*/
+    root->left = buildVantagePointTree(&left[0], left.size());
+    /*cout<<"Right"<<endl;
+    for (int i=0;i<right.size();i++)
+    {
+    	print_pt(right[i]);
+	}*/
+    root->right = buildVantagePointTree(&right[0], right.size());
+    return root;
+}
+
+void sub_search(Point q, Node *current_node, float *tau, Point *nn)
+{
+    if (current_node != NULL)
+    {
+    	//cout<<"Node:";
+    	//print_pt(current_node->vp);
+    	//cout<<"Current nn:";
+    	//print_pt(*nn);
+        float current_dist = L2Dist(current_node->vp, q);
+        if (current_dist < *tau)
+        {
+            *tau = current_dist;
+            *nn = current_node->vp;
+        }
+        if (current_dist >= current_node->mu + *tau)
+        {
+        	//cout<<"Left tree pruned"<<endl;
+            sub_search(q, current_node->right, tau, nn);
+        }
+        else if (current_dist < current_node->mu - *tau)
+        {
+        	//cout<<"Right tree pruned"<<endl;
+            sub_search(q, current_node->left, tau, nn);
+        }
+        else
+        {
+            if (current_dist >= current_node->mu)
+            {
+                sub_search(q, current_node->right, tau, nn);
+                sub_search(q, current_node->left, tau, nn);
+            }
+            else
+            {
+                sub_search(q, current_node->left, tau, nn);
+                sub_search(q, current_node->right, tau, nn);
+            }
+        }
+    }
+}
+
+Point nn_search(Node *head, Point q)
+{
+	float tau1 = L2Dist(head->vp, q);
+	float* tau=&tau1;
+    Point nn = head->vp;
+    sub_search(q, head, tau, &nn);
+    return nn;
+}
+
+void print_pt(Point a)
+{
+    cout << "(";
+    for (int i = 0; i < DIM; i++)
+    {
+        cout << a.vp[i] << ",";
+    }
+    cout << ")";
+    return;
+}
+
+/*void print_tree(Node *root)
+{
+    if (root != NULL)
+    {
+        print_tree(root->left);
+        cout << "vp:";
+        print_pt(root->vp);
+        cout << " mu:" << root->mu << endl;
+        print_tree(root->right);
+    }
+    // return;
+}*/
+
+Point brute(Point *data, Point q)
+{
+    Point nn = data[0];
+    float d = L2Dist(data[0], q);
+    for (int i = 1; i < NUM; i++)
+    {
+        float temp = L2Dist(data[i], q);
+        if (temp < d)
+        {
+            d = temp;
+            nn = data[i];
+        }
+    }
+    return nn;
+}
+
+int main()
+{
+    Point *data = new Point[NUM];
+    for (size_t i = 0; i < NUM; i++)
+    {
+        data[i] = randomPoint();
+        /*print_pt(data[i]);
+        cout<<endl;*/
+    }
+    Node *root = buildVantagePointTree(data, NUM);
+    Point query = randomPoint();
+    cout << "Query point:";
+    print_pt(query);
+    cout << endl;
+    Point nn = brute(data, query);
+    cout << "Nearest neighbour by brute force:";
+    print_pt(nn);
+    cout << endl;
+    cout << "Distance by brute force: " << L2Dist(nn, query) << endl;
+    Point nn_vp = nn_search(root, query);
+    cout << "Nearest neighbour by vp tree search:";
+    print_pt(nn_vp);
+    cout << endl;
+    cout << "Distance by vp tree search: " << L2Dist(nn_vp, query) << endl;
+    return 0;
+}
